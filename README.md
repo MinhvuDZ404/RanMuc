@@ -40,4 +40,4 @@ Toàn bộ nằm trong **một file HTML duy nhất**, không cần cài đặt 
 
 ---
 
-Nếu bạn cần mô tả này cho mục đích cụ thể — README trên GitHub, trang giới thiệu trên itch.io, bài nộp môn học, hay bản rút gọn 2–3 câu — nói tôi, tôi viết lại theo đúng format đó.
+link game đây nha https://minhvudz404.github.io/RanMuc/
