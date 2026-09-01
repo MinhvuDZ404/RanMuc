@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Rắn mực — game snake trên giấy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,600;1,9..144,700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --paper:#f2e7d1;
+    --paper-hi:#f8f0df;
+    --ink:#241d12;
+    --ink-60:rgba(36,29,18,.6);
+    --ink-35:rgba(36,29,18,.35);
+    --ink-15:rgba(36,29,18,.15);
+    --son:#bf3a1f;
+    --board:min(92vw, calc(100vh - 210px), 620px);
+  }
+  @supports (height:100dvh){
+    :root{ --board:min(92vw, calc(100dvh - 210px), 620px); }
+  }
+
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  html{ color-scheme:light; }
+  html,body{ height:100%; overscroll-behavior:none; }
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Space Grotesk',sans-serif;
+    display:flex; align-items:center; justify-content:center;
+    min-height:100vh; min-height:100dvh;
+    overflow:hidden;
+    -webkit-user-select:none; user-select:none;
+  }
+
+  /* vân giấy: lớp nhiễu rất mảnh phủ toàn trang, như giấy in thật */
+  body::after{
+    content:""; position:fixed; inset:0; z-index:40; pointer-events:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.9 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity:.07; mix-blend-mode:multiply;
+  }
+
+  .stage{
+    width:var(--board);
+    display:flex; flex-direction:column; gap:16px;
+    position:relative; z-index:1;
+  }
+
+  /* ---- đầu trang, kiểu masthead báo in ---- */
+  .masthead{
+    position:relative;
+    display:flex; flex-wrap:wrap; justify-content:space-between; align-items:flex-end;
+    gap:12px 16px; padding-bottom:11px;
+    border-bottom:1px solid var(--ink);
+  }
+  .masthead::after{
+    content:""; position:absolute; left:0; right:0; bottom:-4px; height:2px; background:var(--ink);
+  }
+  .brand{ display:flex; gap:14px; align-items:flex-start; }
+  .seal{
+    width:44px; height:44px; flex:none; margin-top:2px;
+    background:var(--son); color:var(--paper-hi);
+    font-family:Fraunces,serif; font-style:italic; font-weight:700; font-size:15px;
+    display:grid; place-items:center; border-radius:3px;
+    transform:rotate(-6deg); position:relative;
+    box-shadow:inset 0 0 0 1.5px rgba(248,240,223,.4);
+  }
+  .seal::after{
+    content:""; position:absolute; inset:4px;
+    border:1px dashed rgba(248,240,223,.35); border-radius:2px;
+  }
+  h1{ font-family:Fraunces,serif; font-weight:600; font-size:clamp(26px,4.6vw,38px); line-height:1; letter-spacing:-.01em; }
+  h1 em{ font-style:italic; font-weight:700; color:var(--son); }
+  .sub{ margin-top:6px; font-size:10.5px; font-weight:500; letter-spacing:.24em; text-transform:uppercase; color:var(--ink-60); }
+
+  .hud{ display:flex; align-items:stretch; gap:16px; }
+  .hud .item{ display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
+  .hud .label{ font-size:10px; font-weight:500; letter-spacing:.22em; text-transform:uppercase; color:var(--ink-60); }
+  .hud .value{ font-size:24px; font-weight:600; line-height:1; font-variant-numeric:tabular-nums; transform-origin:50% 100%; }
+  .hud .value.small{ font-size:14px; color:var(--ink-60); line-height:1.55; }
+  .hud .sep{ width:1px; background:var(--ink-15); }
+  @keyframes bump{ 0%{transform:scale(1)} 30%{transform:scale(1.25)} 100%{transform:scale(1)} }
+  .value.bump{ animation:bump .3s ease; }
+  @media (max-width:520px){
+    .hud{ width:100%; justify-content:space-between; gap:10px; }
+    .hud .value{ font-size:20px; }
+  }
+
+  /* ---- khung sân chơi ---- */
+  .board{
+    position:relative;
+    border:1px solid var(--ink);
+    padding:10px;
+    background:var(--paper-hi);
+    touch-action:none; -webkit-user-select:none; user-select:none;
+    box-shadow:0 18px 34px -24px rgba(36,29,18,.5);
+  }
+  canvas{ display:block; width:100%; aspect-ratio:1; border:1px solid var(--ink-35); }
+
+  /* ---- lớp phủ trạng thái ---- */
+  .ov{
+    position:absolute; inset:0; z-index:5;
+    display:flex; align-items:center; justify-content:center; text-align:center;
+    background:rgba(242,231,209,.78);
+    backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px);
+    opacity:0; visibility:hidden;
+    transition:opacity .28s ease, visibility .28s;
+  }
+  .ov.on{ opacity:1; visibility:visible; }
+  .ov .inner{
+    display:flex; flex-direction:column; align-items:center; gap:14px; padding:20px;
+    transform:translateY(10px); transition:transform .32s cubic-bezier(.2,.7,.3,1);
+  }
+  .ov.on .inner{ transform:none; }
+  .kicker{ font-size:10px; font-weight:600; letter-spacing:.32em; text-transform:uppercase; color:var(--son); }
+  .rules{ font-family:Fraunces,serif; font-weight:500; font-size:16px; line-height:1.75; }
+  .ov-title{ font-family:Fraunces,serif; font-style:italic; font-weight:600; font-size:clamp(28px,6vw,42px); line-height:1.05; }
+  .hint{ font-size:11.5px; letter-spacing:.06em; color:var(--ink-60); }
+  .keyrow{ display:flex; gap:6px; margin:2px 0; }
+  kbd{
+    font-family:'Space Grotesk'; font-size:11px; line-height:1;
+    padding:4px 7px; min-width:24px; text-align:center;
+    border:1px solid var(--ink-35); border-bottom-width:2px; border-radius:5px;
+    background:var(--paper-hi);
+  }
+  .hint kbd{ margin:0 2px; }
+  .pulse{ animation:pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse{ 0%,100%{opacity:.45} 50%{opacity:1} }
+  .final{ display:flex; align-items:baseline; gap:10px; }
+  .final .n{ font-family:Fraunces,serif; font-weight:600; font-size:clamp(48px,10vw,72px); line-height:1; }
+  .final .unit{ font-family:Fraunces,serif; font-style:italic; font-size:15px; color:var(--ink-60); }
+  .best-line{ font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-60); }
+  .record-new{ display:none; font-family:Fraunces,serif; font-style:italic; font-weight:700; color:var(--son); font-size:16px; }
+  .record-new.show{ display:block; animation:stamp .45s cubic-bezier(.2,1.4,.4,1); }
+  @keyframes stamp{ from{ transform:scale(.6) rotate(-4deg); opacity:0; } to{ transform:none; opacity:1; } }
+
+  /* ---- chân trang ---- */
+  .keys{ display:flex; flex-wrap:wrap; justify-content:center; gap:8px 16px; font-size:11.5px; color:var(--ink-60); }
+  .keys .kg{ display:inline-flex; align-items:center; gap:5px; }
+  .meta{
+    display:flex; justify-content:space-between; gap:12px; margin-top:8px;
+    font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-35);
+  }
+  .meta .off{ color:var(--son); }
+</style>
+</head>
+<body>
+<main class="stage">
+
+  <header class="masthead">
+    <div class="brand">
+      <span class="seal" aria-hidden="true">mực</span>
+      <div>
+        <h1>Rắn <em>mực</em></h1>
+        <p class="sub">một vệt mực trên trang giấy kẻ ô</p>
+      </div>
+    </div>
+    <div class="hud" aria-label="bảng số liệu">
+      <div class="item"><span class="label">Điểm</span><span class="value" id="score">0</span></div>
+      <div class="sep"></div>
+      <div class="item"><span class="label">Kỷ lục</span><span class="value" id="best">0</span></div>
+      <div class="sep"></div>
+      <div class="item"><span class="label">Tốc độ</span><span class="value small" id="speed">×1.0</span></div>
+    </div>
+  </header>
+
+  <div class="board" id="board">
+    <canvas id="game" aria-label="sân chơi rắn mực"></canvas>
+
+    <div class="ov on" id="ovReady">
+      <div class="inner">
+        <p class="kicker">luật chơi</p>
+        <p class="rules">ăn chấm son để dài ra,<br />đừng cắn thân mình,<br />đừng tràn ra khỏi trang giấy.</p>
+        <div class="keyrow"><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd></div>
+        <p class="hint pulse">vuốt, nhấn <kbd>Space</kbd> hoặc phím hướng để bắt đầu</p>
+      </div>
+    </div>
+
+    <div class="ov" id="ovPause">
+      <div class="inner">
+        <p class="kicker">giữa chừng</p>
+        <h2 class="ov-title">Tạm dừng.</h2>
+        <p class="hint">nhấn <kbd>Space</kbd> hoặc chạm để tiếp tục</p>
+      </div>
+    </div>
+
+    <div class="ov" id="ovOver">
+      <div class="inner">
+        <p class="kicker">hết ván</p>
+        <h2 class="ov-title">Vệt mực dừng lại.</h2>
+        <p class="final"><span class="n" id="finalN">0</span><span class="unit">chấm son</span></p>
+        <p class="best-line" id="bestLine">kỷ lục — 0</p>
+        <p class="record-new" id="recNew">— kỷ lục mới —</p>
+        <p class="hint pulse">nhấn phím hướng, vuốt, hoặc chạm để chơi lại</p>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="keys">
+      <span class="kg"><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd> di chuyển</span>
+      <span class="kg"><kbd>Space</kbd> bắt đầu / tạm dừng</span>
+      <span class="kg"><kbd>M</kbd> âm thanh</span>
+    </div>
+    <div class="meta">
+      <span>ván № <span id="round">001</span></span>
+      <span id="snd">âm thanh: bật</span>
+    </div>
+  </footer>
+
+</main>
+
+<script>
+'use strict';
+
+/* ================= tham chiếu & hằng số ================= */
+const $ = id => document.getElementById(id);
+const canvas = $('game'), ctx = canvas.getContext('2d');
+const board = $('board');
+
+const ui = {
+  score: $('score'), best: $('best'), speed: $('speed'),
+  round: $('round'), snd: $('snd'),
+  ovReady: $('ovReady'), ovPause: $('ovPause'), ovOver: $('ovOver'),
+  finalN: $('finalN'), bestLine: $('bestLine'), recNew: $('recNew')
+};
+
+const COLS = 22, ROWS = 22;
+const INK  = '#241d12';
+const SON  = '#bf3a1f';
+const PAPER= '#f8f0df';
+
+const START_MS = 150;
+const MIN_MS   = 64;
+const SPEED_STEP = 3.2;
+
+/* localStorage có thể bị chặn (iframe sandbox, chế độ riêng tư nghiêm ngặt).
+   Bọc an toàn để script không bao giờ chết vì nó. */
+const store = {
+  get(k){ try{ return window.localStorage.getItem(k); }catch(_){ return null; } },
+  set(k, v){ try{ window.localStorage.setItem(k, String(v)); }catch(_){} }
+};
+
+/* ================= trạng thái ================= */
+const S = {
+  mode: 'ready',            /* ready | playing | paused | dying | over */
+  snake: [], prev: [],
+  dir: {x:1, y:0}, queue: [],
+  food: {x:0, y:0},
+  score: 0, eaten: 0,
+  stepMs: START_MS, acc: 0, t: 0,
+  deathT: 0, newRecord: false,
+  particles: [], ripples: [], floats: []
+};
+let best  = Number(store.get('ranmuc-best'))  || 0;
+let round = Number(store.get('ranmuc-round')) || 0;
+let muted = store.get('ranmuc-mute') === '1';
+
+/* ================= kích thước & lớp lưới ================= */
+let dpr = 1, side = 0, cell = 0, gridLayer = null;
+
+function resize(){
+  const w = Math.round(canvas.clientWidth);
+  if(!w) return;
+  dpr  = Math.min(window.devicePixelRatio || 1, 2.5);
+  side = w;
+  cell = side / COLS;
+  canvas.width  = Math.round(w * dpr);
+  canvas.height = Math.round(w * dpr);
+  canvas.style.height = w + 'px';   /* ép vuông kể cả khi CSS aspect-ratio không được hỗ trợ */
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  gridLayer = makeGrid();
+}
+
+function makeGrid(){
+  const c = document.createElement('canvas');
+  c.width = canvas.width; c.height = canvas.height;
+  const g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.strokeStyle = 'rgba(36,29,18,.09)';
+  g.lineWidth = 1;
+  g.beginPath();
+  for(let i = 1; i < COLS; i++){ const p = i * cell; g.moveTo(p, 0); g.lineTo(p, side); }
+  for(let j = 1; j < ROWS; j++){ const p = j * cell; g.moveTo(0, p); g.lineTo(side, p); }
+  g.stroke();
+  return c;
+}
+
+if('ResizeObserver' in window) new ResizeObserver(resize).observe(canvas);
+window.addEventListener('resize', resize);
+
+/* ================= vòng đời ván chơi ================= */
+function reset(){
+  const cy = ROWS >> 1;
+  S.snake = [];
+  for(let i = 0; i < 4; i++) S.snake.push({ x: 9 - i, y: cy });
+  S.prev = S.snake.map(p => ({x: p.x, y: p.y}));
+  S.dir = {x:1, y:0}; S.queue = [];
+  S.score = 0; S.eaten = 0;
+  S.stepMs = START_MS; S.acc = 0; S.t = 0; S.deathT = 0;
+  S.newRecord = false;
+  S.particles.length = 0; S.ripples.length = 0; S.floats.length = 0;
+  S.mode = 'ready';
+  spawnFood();
+  ui.score.textContent = '0';
+  ui.speed.textContent = '×1.0';
+  ui.best.textContent = best;
+  ui.round.textContent = String(round + 1).padStart(3, '0');
+}
+
+function spawnFood(){
+  const free = [];
+  for(let y = 0; y < ROWS; y++)
+    for(let x = 0; x < COLS; x++)
+      if(!S.snake.some(p => p.x === x && p.y === y)) free.push({x, y});
+  S.food = free.length ? free[(Math.random() * free.length) | 0] : null;
+}
+
+function begin(d){
+  /* begin luôn khởi động; hướng lùi vào thân chỉ bị bỏ qua, không chặn việc vào game */
+  if(d && !(d.x === -1 && d.y === 0)) S.dir = d;
+  round++;
+  store.set('ranmuc-round', round);
+  ui.round.textContent = String(round).padStart(3, '0');
+  S.mode = 'playing'; S.acc = 0; S.t = 0;
+  hideAllOv();
+  sfxStart();
+}
+
+function restart(){ reset(); begin(null); }
+
+function tick(){
+  if(!S.food){ die(); return; }
+  while(S.queue.length){
+    const d = S.queue.shift();
+    if(d.x === -S.dir.x && d.y === -S.dir.y) continue;
+    if(d.x ===  S.dir.x && d.y ===  S.dir.y) continue;
+    S.dir = d; break;
+  }
+  const nx = S.snake[0].x + S.dir.x, ny = S.snake[0].y + S.dir.y;
+
+  if(nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) return die();
+
+  const willEat = (S.food && nx === S.food.x && ny === S.food.y);
+  const check = willEat ? S.snake : S.snake.slice(0, -1);
+  if(check.some(p => p.x === nx && p.y === ny)) return die();
+
+  S.prev = S.snake.map(p => ({x: p.x, y: p.y}));
+  S.snake.unshift({x: nx, y: ny});
+  if(willEat) eat(); else S.snake.pop();
+}
+
+function eat(){
+  S.score++; S.eaten++;
+  S.stepMs = Math.max(MIN_MS, START_MS - S.eaten * SPEED_STEP);
+  ui.score.textContent = S.score; bump(ui.score);
+  ui.speed.textContent = '×' + (START_MS / S.stepMs).toFixed(1);
+  if(S.score > best){
+    best = S.score; S.newRecord = true;
+    store.set('ranmuc-best', best);
+    ui.best.textContent = best; bump(ui.best);
+  }
+  const fx = (S.food.x + .5) * cell, fy = (S.food.y + .5) * cell;
+  burst(fx, fy, 10, SON, 1);
+  S.ripples.push({x: fx, y: fy, t: 0});
+  S.floats.push({x: fx, y: fy, t: 0});
+  sfxEat();
+  spawnFood();
+}
+
+function die(){
+  S.mode = 'dying'; S.deathT = 0;
+  const pts = snakePoints(S.t || 0);
+  pts.forEach(p => burst(p.x, p.y, 2, INK, .7));
+  sfxDie();
+}
+
+/* ================= hiệu ứng ================= */
+function burst(x, y, n, color, spread){
+  for(let i = 0; i < n && S.particles.length < 140; i++){
+    const a = Math.random() * Math.PI * 2;
+    const v = (0.5 + Math.random() * 2.2) * cell / 1000 * spread;
+    S.particles.push({
+      x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v,
+      r: cell * (0.045 + Math.random() * 0.09),
+      max: 420 + Math.random() * 480, t: 0, color
+    });
+  }
+}
+
+function updateFx(dt){
+  const fr = Math.pow(0.9, dt / 16);
+  for(let i = S.particles.length - 1; i >= 0; i--){
+    const p = S.particles[i]; p.t += dt;
+    if(p.t >= p.max){ S.particles.splice(i, 1); continue; }
+    p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= fr; p.vy *= fr;
+  }
+  for(let i = S.ripples.length - 1; i >= 0; i--){
+    const r = S.ripples[i]; r.t += dt;
+    if(r.t > 460) S.ripples.splice(i, 1);
+  }
+  for(let i = S.floats.length - 1; i >= 0; i--){
+    const f = S.floats[i]; f.t += dt;
+    if(f.t > 750) S.floats.splice(i, 1);
+  }
+}
+
+/* ================= vẽ ================= */
+function snakePoints(t){
+  const n = S.snake.length, prev = S.prev, pts = [];
+  for(let i = 0; i < n; i++){
+    const c = S.snake[i];
+    const p = prev[Math.min(i, prev.length - 1)] || c;
+    pts.push({ x: (p.x + (c.x - p.x) * t + .5) * cell, y: (p.y + (c.y - p.y) * t + .5) * cell });
+  }
+  return pts;
+}
+
+function render(now){
+  if(!side || !gridLayer) return;
+  ctx.clearRect(0, 0, side, side);
+  ctx.drawImage(gridLayer, 0, 0, side, side);
+  drawFood(now);
+  if(S.mode !== 'over') drawSnake();
+  drawFx();
+}
+
+function drawFood(now){
+  if(!S.food) return;
+  const cx = (S.food.x + .5) * cell, cy = (S.food.y + .5) * cell;
+  const pulse = 1 + 0.09 * Math.sin(now / 300);
+  const r = cell * 0.30 * pulse;
+  ctx.fillStyle = SON;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(36,29,18,.32)'; ctx.lineWidth = 1;
+  const r2 = cell * 0.47 * (1 + 0.05 * Math.sin(now / 300 + Math.PI));
+  ctx.beginPath(); ctx.arc(cx, cy, r2, 0, Math.PI * 2); ctx.stroke();
+  const ang = ((S.food.x * 7 + S.food.y * 13) % 12) / 12 * Math.PI * 2;
+  ctx.globalAlpha = .75;
+  ctx.beginPath();
+  ctx.arc(cx + Math.cos(ang) * cell * .62, cy + Math.sin(ang) * cell * .62, Math.max(1.4, cell * .075), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function drawSnake(){
+  const pts = snakePoints(S.t || 0);
+  if(pts.length < 2) return;
+  let alpha = 1;
+  if(S.mode === 'dying') alpha = Math.max(0, 1 - S.deathT / 600);
+  if(alpha <= 0) return;
+
+  const headW = cell * 0.82, tailW = cell * 0.26;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = INK; ctx.lineCap = 'round';
+
+  const m = pts.length - 1;
+  for(let i = m - 1; i >= 0; i--){
+    const k = 1 - i / m;
+    ctx.lineWidth = tailW + (headW - tailW) * Math.pow(k, 0.85);
+    ctx.beginPath();
+    ctx.moveTo(pts[i + 1].x, pts[i + 1].y);
+    ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.stroke();
+  }
+
+  const h = pts[0];
+  ctx.fillStyle = INK;
+  ctx.beginPath(); ctx.arc(h.x, h.y, headW / 2 + 1, 0, Math.PI * 2); ctx.fill();
+
+  let fxv = h.x - pts[1].x, fyv = h.y - pts[1].y, L = Math.hypot(fxv, fyv);
+  if(L < 0.001){ fxv = S.dir.x; fyv = S.dir.y; L = 1; }
+  fxv /= L; fyv /= L;
+
+  const hcx = Math.round(h.x / cell - .5), hcy = Math.round(h.y / cell - .5);
+  const dx = S.food ? S.food.x - hcx : 0, dy = S.food ? S.food.y - hcy : 0;
+  if(S.mode === 'playing' && (dx === 0 || dy === 0) && (dx * fxv + dy * fyv) > 0
+     && Math.abs(dx) + Math.abs(dy) <= 4){
+    drawTongue(h, fxv, fyv, headW);
+  }
+
+  const eo = headW * .26, fo = headW * .10, er = Math.max(1.6, headW * .115);
+  const px = -fyv, py = fxv;
+  for(const s of [-1, 1]){
+    const ex = h.x + fxv * fo + px * eo * s, ey = h.y + fyv * fo + py * eo * s;
+    if(S.mode === 'dying'){
+      ctx.strokeStyle = PAPER; ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(ex - er, ey - er); ctx.lineTo(ex + er, ey + er);
+      ctx.moveTo(ex + er, ey - er); ctx.lineTo(ex - er, ey + er);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = PAPER;
+      ctx.beginPath(); ctx.arc(ex, ey, er, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+function drawTongue(h, fxv, fyv, headW){
+  const nx = -fyv, ny = fxv;
+  const bx = h.x + fxv * (headW / 2 + 1), by = h.y + fyv * (headW / 2 + 1);
+  const len = cell * .42;
+  const tx = bx + fxv * len, ty = by + fyv * len;
+  ctx.strokeStyle = SON;
+  ctx.lineWidth = Math.max(1.5, cell * .07);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(bx, by); ctx.lineTo(tx, ty);
+  ctx.moveTo(tx, ty); ctx.lineTo(tx + fxv * cell * .14 + nx * cell * .10, ty + fyv * cell * .14 + ny * cell * .10);
+  ctx.moveTo(tx, ty); ctx.lineTo(tx + fxv * cell * .14 - nx * cell * .10, ty + fyv * cell * .14 - ny * cell * .10);
+  ctx.stroke();
+}
+
+function drawFx(){
+  for(const r of S.ripples){
+    const k = r.t / 460;
+    ctx.strokeStyle = SON;
+    ctx.globalAlpha = (1 - k) * .7;
+    ctx.lineWidth = 2.5 * (1 - k) + .4;
+    ctx.beginPath(); ctx.arc(r.x, r.y, cell * (.32 + k * 1.7), 0, Math.PI * 2); ctx.stroke();
+  }
+  for(const p of S.particles){
+    const k = 1 - p.t / p.max;
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = Math.min(1, k * 1.6);
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (.4 + .6 * k), 0, Math.PI * 2); ctx.fill();
+  }
+  for(const f of S.floats){
+    const k = f.t / 750;
+    ctx.globalAlpha = 1 - k;
+    ctx.fillStyle = '#96301a';
+    ctx.font = 'italic 700 ' + Math.round(cell * .95) + 'px Fraunces, serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('+1', f.x, f.y - k * cell * 1.5);
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* ================= vòng lặp chính ================= */
+function frame(now){
+  const dt = Math.min(50, now - (S.last || now));
+  S.last = now;
+
+  if(S.mode === 'playing'){
+    S.acc += dt;
+    let guard = 0;
+    while(S.acc >= S.stepMs && S.mode === 'playing' && guard++ < 6){
+      S.acc -= S.stepMs;
+      tick();
+    }
+    if(S.mode === 'playing') S.t = Math.min(1, S.acc / S.stepMs);
+  } else if(S.mode === 'dying'){
+    S.deathT += dt;
+    if(S.deathT > 820){ S.mode = 'over'; showOver(); }
+  }
+
+  updateFx(dt);
+  render(now);
+  requestAnimationFrame(frame);
+}
+
+/* ================= âm thanh (WebAudio, không file ngoài) ================= */
+let actx = null;
+function audio(){
+  if(muted) return null;
+  if(!actx){
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return null;
+    try{ actx = new AC(); }catch(_){ return null; }
+  }
+  if(actx.state === 'suspended'){ try{ actx.resume(); }catch(_){} }
+  return actx;
+}
+function tone(f0, f1, dur, type, vol){
+  const a = audio(); if(!a) return;
+  try{
+    const t = a.currentTime;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(30, f1), t + dur);
+    g.gain.setValueAtTime(.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + .014);
+    g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(g); g.connect(a.destination);
+    o.start(t); o.stop(t + dur + .06);
+  }catch(_){}
+}
+function sfxStart(){ tone(300, 470, .12, 'triangle', .12); }
+function sfxEat(){ const b = 520 + ((S.eaten - 1) % 6) * 46; tone(b, b * 1.6, .11, 'triangle', .16); }
+function sfxDie(){ tone(170, 48, .5, 'triangle', .22); tone(96, 40, .42, 'sine', .15); }
+
+function toggleMute(){
+  muted = !muted;
+  store.set('ranmuc-mute', muted ? '1' : '0');
+  ui.snd.textContent = muted ? 'âm thanh: tắt' : 'âm thanh: bật';
+  ui.snd.classList.toggle('off', muted);
+}
+
+/* ================= lớp phủ & HUD ================= */
+function hideAllOv(){ [ui.ovReady, ui.ovPause, ui.ovOver].forEach(o => o.classList.remove('on')); }
+function showReady(){ hideAllOv(); ui.ovReady.classList.add('on'); }
+function showPause(){ hideAllOv(); ui.ovPause.classList.add('on'); }
+function showOver(){
+  hideAllOv();
+  ui.finalN.textContent = S.score;
+  ui.bestLine.textContent = 'kỷ lục — ' + best;
+  ui.recNew.classList.toggle('show', S.newRecord);
+  ui.ovOver.classList.add('on');
+}
+function bump(el){ el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+
+/* ================= điều khiển ================= */
+const KEYS = {
+  ArrowUp:[0,-1],    KeyW:[0,-1],
+  ArrowDown:[0,1],   KeyS:[0,1],
+  ArrowLeft:[-1,0],  KeyA:[-1,0],
+  ArrowRight:[1,0],  KeyD:[1,0]
+};
+
+/* Space / Enter / chạm: một hành chung cho mọi trạng thái */
+function primaryAction(){
+  if(S.mode === 'ready') begin(null);
+  else if(S.mode === 'over') restart();
+  else if(S.mode === 'playing' || S.mode === 'paused') togglePause();
+}
+
+function togglePause(){
+  if(S.mode === 'playing'){ S.mode = 'paused'; showPause(); }
+  else if(S.mode === 'paused'){ S.mode = 'playing'; hideAllOv(); }
+}
+
+function steer(d){
+  if(S.mode === 'ready'){
+    begin(d);                       /* begin tự loại hướng lùi, nhưng luôn vào game */
+  } else if(S.mode === 'over'){
+    reset();
+    begin(d);                       /* chơi lại ngay bằng phím hướng */
+  } else if(S.mode === 'playing'){
+    if(S.queue.length < 3) S.queue.push(d);
+  }
+}
+
+window.addEventListener('keydown', e => {
+  const code = e.code;
+  if(code === 'Space' || code === 'Enter' || code === 'KeyP'){
+    e.preventDefault();
+    if(!e.repeat) primaryAction();
+    return;
+  }
+  if(code === 'KeyM'){ if(!e.repeat) toggleMute(); return; }
+  const d = KEYS[code];
+  if(d){ e.preventDefault(); if(!e.repeat) steer({ x: d[0], y: d[1] }); }
+});
+
+/* vuốt trên điện thoại / chạm để bắt đầu, tạm dừng, chơi lại */
+let ptStart = null;
+board.addEventListener('pointerdown', e => {
+  ptStart = { x: e.clientX, y: e.clientY, id: e.pointerId };
+  try{ board.setPointerCapture(e.pointerId); }catch(_){}
+});
+board.addEventListener('pointerup', e => {
+  if(!ptStart || ptStart.id !== e.pointerId) return;
+  const dx = e.clientX - ptStart.x, dy = e.clientY - ptStart.y;
+  ptStart = null;
+  if(Math.hypot(dx, dy) >= 24){
+    if(Math.abs(dx) > Math.abs(dy)) steer({ x: Math.sign(dx), y: 0 });
+    else steer({ x: 0, y: Math.sign(dy) });
+    return;
+  }
+  primaryAction();   /* chạm nhẹ: bắt đầu / tạm dừng / tiếp tục / chơi lại */
+});
+board.addEventListener('pointercancel', () => { ptStart = null; });
+board.addEventListener('contextmenu', e => e.preventDefault());
+
+/* rời tab thì tự tạm dừng, tránh "về lại là đã chết" */
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden && S.mode === 'playing'){ S.mode = 'paused'; showPause(); }
+});
+
+/* ================= khởi động ================= */
+ui.best.textContent = best;
+ui.snd.textContent = muted ? 'âm thanh: tắt' : 'âm thanh: bật';
+ui.snd.classList.toggle('off', muted);
+reset();
+showReady();
+resize();
+try{
+  if(document.fonts && document.fonts.load){
+    document.fonts.load('italic 700 24px Fraunces').catch(() => {});
+  }
+}catch(_){}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
